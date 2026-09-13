@@ -2,16 +2,70 @@ import React, { useState, useEffect } from 'react';
 import { SafeAreaView, View, Text, TextInput, Button, FlatList, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import * as Speech from 'expo-speech';
 import { Audio } from 'expo-av';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+WebBrowser.maybeCompleteAuthSession();
 
 // Edit this to point to your backend during development (e.g. http://10.0.2.2:8000)
 const BACKEND_URL = 'http://10.0.2.2:8000';
+// Replace with your Google OAuth Client ID for Android (from Google Cloud Console)
+const GOOGLE_CLIENT_ID = '<GOOGLE_CLIENT_ID_HERE>'; // set this before testing
 
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [recording, setRecording] = useState(null);
+  const [accessToken, setAccessToken] = useState(null);
 
-  useEffect(() => {}, []);
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    clientId: GOOGLE_CLIENT_ID,
+    scopes: ['profile', 'email'],
+    responseType: 'id_token',
+  });
+
+  useEffect(() => {
+    (async () => {
+      const stored = await AsyncStorage.getItem('access_token');
+      if (stored) setAccessToken(stored);
+    })();
+  }, []);
+
+  useEffect(() => {
+    const handleAuth = async () => {
+      if (response?.type === 'success') {
+        const idToken = response.authentication?.idToken || response.params?.id_token;
+        if (!idToken) return;
+        // send idToken to backend to exchange for app access token
+        try {
+          const resp = await fetch(`${BACKEND_URL}/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_token: idToken })
+          });
+          const data = await resp.json();
+          if (data.access_token) {
+            await AsyncStorage.setItem('access_token', data.access_token);
+            setAccessToken(data.access_token);
+          }
+        } catch (e) {
+          console.error('Auth exchange failed', e);
+        }
+      }
+    };
+    handleAuth();
+  }, [response]);
+
+  const signOut = async () => {
+    await AsyncStorage.removeItem('access_token');
+    setAccessToken(null);
+    setMessages([]);
+  };
+
+  const authHeaders = () => {
+    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  };
 
   const sendText = async () => {
     if (!text.trim()) return;
@@ -22,13 +76,12 @@ export default function App() {
     try {
       const resp = await fetch(`${BACKEND_URL}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ message: userMsg.text })
       });
       const data = await resp.json();
       const botMsg = { id: Date.now().toString() + '-bot', role: 'bot', text: data.reply || '...' };
       setMessages(prev => [botMsg, ...prev]);
-      // optional TTS
       Speech.speak(botMsg.text);
     } catch (e) {
       console.error(e);
@@ -57,7 +110,7 @@ export default function App() {
       // upload to backend
       const form = new FormData();
       form.append('file', { uri, name: 'speech.wav', type: 'audio/wav' });
-      const resp = await fetch(`${BACKEND_URL}/speech`, { method: 'POST', body: form });
+      const resp = await fetch(`${BACKEND_URL}/speech`, { method: 'POST', body: form, headers: authHeaders() });
       const data = await resp.json();
       const botMsg = { id: Date.now().toString() + '-bot', role: 'bot', text: data.transcript || data.reply || '...' };
       setMessages(prev => [botMsg, ...prev]);
@@ -71,7 +124,7 @@ export default function App() {
     try {
       const resp = await fetch(`${BACKEND_URL}/image`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ prompt: 'a friendly anime companion portrait' })
       });
       const data = await resp.json();
@@ -92,6 +145,18 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}><Text style={styles.headerText}>TemanGalau (Android)</Text></View>
+
+      <View style={styles.authRow}>
+        {accessToken ? (
+          <>
+            <Text style={{flex:1}}>Signed in</Text>
+            <Button title="Sign out" onPress={signOut} />
+          </>
+        ) : (
+          <Button disabled={!request} title="Sign in with Google" onPress={() => promptAsync()} />
+        )}
+      </View>
+
       <View style={styles.controls}>
         <TextInput style={styles.input} placeholder="Ketik pesan..." value={text} onChangeText={setText} />
         <Button title="Kirim" onPress={sendText} />
@@ -108,6 +173,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   header: { padding: 12, backgroundColor: '#6C63FF' },
   headerText: { color: '#fff', fontWeight: '600', fontSize: 18 },
+  authRow: { padding: 8, flexDirection: 'row', alignItems: 'center' },
   controls: { padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   input: { flex: 1, borderWidth: 1, borderColor: '#ddd', padding: 8, marginRight: 8, borderRadius: 6 },
   msgRow: { margin: 8, padding: 12, borderRadius: 10, maxWidth: '80%' },

@@ -1,33 +1,24 @@
-# TemanGalau-App — Android (Expo) skeleton
+I updated the skeleton to add Google Sign-In and simple session tokens.
 
-A minimal skeleton for an Android-only AI companion app using Expo (React Native) for the frontend and FastAPI for a small backend forwarding requests to AI/image/speech providers.
+What I changed:
+- Frontend: added Google auth flow (expo-auth-session) and local storage of app access token; sign in/out UI; frontend now sends Authorization header to backend when available.
+- Backend: added /auth/google to exchange Google ID token for a backend-signed JWT (requires JWT_SECRET); endpoints /chat, /image, /speech now require Authorization: Bearer <token>.
+- requirements.txt updated for pyjwt and requests.
 
-This branch contains a starter app so anyone can run and test locally. It uses environment variables for API keys.
+Next steps for you to run this locally:
+1) Configure environment
+- Copy .env.example -> .env and set GOOGLE_CLIENT_ID and JWT_SECRET (and OPENAI_API_KEY later if integrating).
+2) Frontend
+- In frontend/package.json we've added dependencies. Install them with npm install.
+- Replace GOOGLE_CLIENT_ID in frontend/App.js with the Android client ID from Google Cloud Console, or configure properly for your Expo environment.
+3) Backend
+- Install backend requirements and run uvicorn as before.
 
-Quick start (local):
+Security notes
+- JWT_SECRET must be a strong random secret in production.
+- For production Android builds, configure proper OAuth client IDs and redirect URIs in Google Cloud Console. The current setup is a skeleton for local/dev testing.
 
-1) Frontend
-- cd frontend
-- npm install
-- expo start
-- Run on Android device/emulator via Expo Go or a standalone build.
-
-2) Backend
-- cd backend
-- python -m venv .venv
-- source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-- pip install -r requirements.txt
-- Copy .env.example -> .env and fill keys (OPENAI_API_KEY or other provider keys)
-- uvicorn main:app --reload --host 0.0.0.0 --port 8000
-
-Notes
-- The frontend expects BACKEND_URL in frontend/.env or edit the constant in App.js to point to your backend (e.g., http://10.0.2.2:8000 for Android emulator, or http://192.168.x.y:8000 for device)
-- This is a skeleton: replace forwarding logic in backend/main.py with your provider-specific code.
-
-Files added:
-- frontend/ (Expo app)
-- backend/ (FastAPI app)
-- .gitignore
-- .env.example
-
-License: MIT
+If you want, I can now:
+- Integrate OpenAI for /chat and image generation.
+- Wire up a real speech-to-text provider for /speech.
+- Create a PR from init/app-skeleton into main when ready.
