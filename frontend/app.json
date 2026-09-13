@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "TemanGalau",
+    "slug": "temangalau-app",
+    "version": "0.1.0",
+    "sdkVersion": "48.0.0",
+    "platforms": ["android"]
+  }
+}
